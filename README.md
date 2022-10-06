@@ -17,6 +17,11 @@ hopefully no one sees me as ripping there work and understands)
 - A little easier to set up for server usage only
 - Has a global DB instance
 
+### Installation:
+```shell
+go get github.com/idevelopthings/surrealdb.go.unofficial
+```
+
 ### Examples:
 
 #### Setup:
