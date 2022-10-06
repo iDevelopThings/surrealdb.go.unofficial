@@ -70,44 +70,95 @@ func (resolver *QueryResolver[T]) runQuery(db *DB) *ResolvedQuery[T] {
 	return NewResolvedQuery[T](result.(*RPCRawResponse))
 }
 
-func Create[T any](ctx context.Context, db *DB, what string, params ...map[string]any) ResolvedCreateResult[T] {
+func Create[T any](what string, params ...map[string]any) ResolvedCreateResult[T] {
 	if len(params) == 0 {
 		// Ensure there's always a default, surreal doesn't like it missing
 		params = append(params, map[string]any{})
 	}
-
-	return createResolver[T](ctx, what, params[0]).runCrud(db, "create")
+	var config = QueryConfig{
+		Ctx:    dbConfig.Ctx,
+		Db:     db,
+		Params: params[0],
+		Query:  what,
+	}
+	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
+		defer cancel()
+		config.Ctx = ctx
+	}
+	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "create")
 }
 
-func Update[T any](ctx context.Context, db *DB, what string, params ...map[string]any) ResolvedUpdateResult[T] {
+func Update[T any](what string, params ...map[string]any) ResolvedUpdateResult[T] {
 	if len(params) == 0 {
 		// Ensure there's always a default, surreal doesn't like it missing
 		params = append(params, map[string]any{})
 	}
-
-	return createResolver[T](ctx, what, params[0]).runCrud(db, "update")
+	var config = QueryConfig{
+		Ctx:    dbConfig.Ctx,
+		Db:     db,
+		Params: params[0],
+		Query:  what,
+	}
+	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
+		defer cancel()
+		config.Ctx = ctx
+	}
+	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "update")
 }
 
-func Change[T any](ctx context.Context, db *DB, what string, params ...map[string]any) ResolvedUpdateResult[T] {
+func Change[T any](what string, params ...map[string]any) ResolvedUpdateResult[T] {
 	if len(params) == 0 {
 		// Ensure there's always a default, surreal doesn't like it missing
 		params = append(params, map[string]any{})
 	}
-
-	return createResolver[T](ctx, what, params[0]).runCrud(db, "change")
+	var config = QueryConfig{
+		Ctx:    dbConfig.Ctx,
+		Db:     db,
+		Params: params[0],
+		Query:  what,
+	}
+	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
+		defer cancel()
+		config.Ctx = ctx
+	}
+	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "change")
 }
 
-func Modify(ctx context.Context, db *DB, what string, data []Patch) *ResolvedModifyResult {
-	return createResolver[any](ctx, what, data).runModify(db)
+func Modify(what string, data []Patch) *ResolvedModifyResult {
+
+	var config = QueryConfig{
+		Ctx:   dbConfig.Ctx,
+		Db:    db,
+		Query: what,
+	}
+	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
+		defer cancel()
+		config.Ctx = ctx
+	}
+	return createResolver[any](config.Ctx, config.Query, data).runModify(config.Db)
 }
 
-func Delete[T any](ctx context.Context, db *DB, what string, params ...map[string]any) ResolvedUpdateResult[T] {
+func Delete[T any](what string, params ...map[string]any) ResolvedUpdateResult[T] {
 	if len(params) == 0 {
 		// Ensure there's always a default, surreal doesn't like it missing
 		params = append(params, map[string]any{})
 	}
-
-	return createResolver[T](ctx, what, params[0]).runCrud(db, "delete")
+	var config = QueryConfig{
+		Ctx:    dbConfig.Ctx,
+		Db:     db,
+		Params: params[0],
+		Query:  what,
+	}
+	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
+		defer cancel()
+		config.Ctx = ctx
+	}
+	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "delete")
 }
 
 func (resolver *QueryResolver[T]) runCrud(db *DB, method string) *ResolvedCrudResult[T] {
