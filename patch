@@ -4,7 +4,7 @@ read VERSION
 echo "Echo pushing new version to Github: $VERSION"
 
 git tag v$VERSION
-git push origin/main v$VERSION
+git push origin v$VERSION
 
 echo "Updating go reference"
 GOPROXY=proxy.golang.org go list -m github.com/idevelopthings/surrealdb.go.unofficial@v$VERSION
