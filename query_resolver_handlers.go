@@ -154,6 +154,16 @@ func (resolver *ResolvedQuery[T]) Results() []ResultQuery[T] {
 	return resolver.results
 }
 
+// IsEmpty Check if the response is empty
+func (resolver *ResolvedQuery[T]) IsEmpty() bool {
+	if resolver.HasError() || len(resolver.results) == 0 {
+		return true
+	}
+	firstResult := resolver.FirstQueryResult()
+
+	return len(firstResult.Result) == 0
+}
+
 // --------------------------------------------------
 
 // ResolvedCrudResult Handles the results of database, create, update, delete etc responses
