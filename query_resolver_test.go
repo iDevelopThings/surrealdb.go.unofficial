@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/idevelopthings/surrealdb.go.unofficial"
-	"github.com/idevelopthings/surrealdb.go.unofficial/internal"
+	Config "github.com/idevelopthings/surrealdb.go.unofficial/config"
 )
 
 func getEnvOrDefault(key, defaultValue string) string {
@@ -18,7 +18,7 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return value
 }
 
-var sdbConfig = &internal.DbConfig{
+var sdbConfig = &Config.DbConfig{
 	Url:       getEnvOrDefault("SURREALDB_RPC_URL", "ws://localhost:8000/rpc"),
 	Username:  getEnvOrDefault("SURREALDB_USER", "root"),
 	Password:  getEnvOrDefault("SURREALDB_PASS", "root"),
@@ -26,7 +26,7 @@ var sdbConfig = &internal.DbConfig{
 	Namespace: "test",
 	AutoLogin: true,
 	AutoUse:   true,
-	Timeouts:  &internal.DbTimeoutConfig{Timeout: time.Duration(10) * time.Second},
+	Timeouts:  &Config.DbTimeoutConfig{Timeout: time.Duration(10) * time.Second},
 }
 
 func setupTests(t *testing.T) *surrealdb.DB {

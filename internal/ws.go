@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	Config "github.com/idevelopthings/surrealdb.go.unofficial/config"
 )
 
 const (
@@ -28,7 +29,7 @@ type WebSocket struct {
 
 // NewWebsocket creates a new websocket connection
 // If timeout is not specified, it will use the default of 30s
-func NewWebsocket(url string, timeout ...*DbTimeoutConfig) (*WebSocket, error) {
+func NewWebsocket(url string, timeout ...*Config.DbTimeoutConfig) (*WebSocket, error) {
 	ws, err := NewWebsocketWithOptions(url, Timeout(DefaultTimeout))
 	if err != nil {
 		return nil, err

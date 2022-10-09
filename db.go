@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 
+	Config "github.com/idevelopthings/surrealdb.go.unofficial/config"
 	"github.com/idevelopthings/surrealdb.go.unofficial/internal"
 )
 
@@ -16,11 +17,11 @@ type DB struct {
 	ws *internal.WebSocket
 }
 
-var dbConfig *internal.DbConfig
+var dbConfig *Config.DbConfig
 var Connection *DB
 
 // New Creates a new DB instance given a WebSocket URL.
-func New(config *internal.DbConfig) (*DB, error) {
+func New(config *Config.DbConfig) (*DB, error) {
 	saveGlobalConf := true
 	if Connection != nil {
 		if dbConfig.Url == config.Url &&
@@ -36,7 +37,7 @@ func New(config *internal.DbConfig) (*DB, error) {
 		}
 	}
 
-	conf := &internal.DbConfig{
+	conf := &Config.DbConfig{
 		Url:       config.Url,
 		Username:  config.Username,
 		Password:  config.Password,
