@@ -150,3 +150,35 @@ surrealdb.Delete[User]("user:12345")
 // Refer to the above overview for the methods available on the result
 ```
 
+
+
+# WIP Query Builder
+
+Example:
+
+```go 
+query := surrealdb.NewBuilder[User]("user").
+    Where("username", "bob")
+
+queryResult := query.First() // = *User{Username: "bob"}
+```
+
+`query` contains some "proxy" methods that the QueryResolvers above also have
+
+So if you keep a reference to it, it can be used to check if there was an error and such. 
+
+For example, with the above
+
+```go
+query := surrealdb.NewBuilder[User]("user").
+    Where("username", "bob")
+user := query.First()
+
+if query.HasError() {
+    log.Fatal(query.Error())
+}
+if query.IsEmpty() {
+    log.Fatal("No user found")
+}
+// Do something with user
+```
