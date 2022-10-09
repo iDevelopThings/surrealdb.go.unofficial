@@ -1,4 +1,4 @@
-package surrealdb
+package internal
 
 import (
 	"encoding/json"

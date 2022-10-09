@@ -7,6 +7,7 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/goccy/go-json"
+	"github.com/idevelopthings/surrealdb.go.unofficial/internal"
 )
 
 var (
@@ -21,12 +22,12 @@ type ResolvedQuery[T any] struct {
 	// The error from the DB or processing of the response
 	err error
 
-	response *RPCRawResponse
+	response *internal.RPCRawResponse
 
 	results []ResultQuery[T]
 }
 
-func NewResolvedQuery[T any](response *RPCRawResponse) *ResolvedQuery[T] {
+func NewResolvedQuery[T any](response *internal.RPCRawResponse) *ResolvedQuery[T] {
 	resolved := &ResolvedQuery[T]{
 		response: response,
 		results:  []ResultQuery[T]{},
@@ -171,12 +172,12 @@ type ResolvedCrudResult[T any] struct {
 	// The error from the DB or processing of the response
 	err error
 
-	response *RPCRawResponse
+	response *internal.RPCRawResponse
 
 	results []T
 }
 
-func NewResolvedCrudResult[T any](response *RPCRawResponse) *ResolvedCrudResult[T] {
+func NewResolvedCrudResult[T any](response *internal.RPCRawResponse) *ResolvedCrudResult[T] {
 	resolved := &ResolvedCrudResult[T]{
 		response: response,
 	}
@@ -270,12 +271,12 @@ type ResolvedModifyResult struct {
 	// The error from the DB or processing of the response
 	err error
 
-	response *RPCRawResponse
+	response *internal.RPCRawResponse
 
 	results [][]Patch
 }
 
-func NewResolvedModifyResult(response *RPCRawResponse) *ResolvedModifyResult {
+func NewResolvedModifyResult(response *internal.RPCRawResponse) *ResolvedModifyResult {
 	resolved := &ResolvedModifyResult{
 		response: response,
 	}

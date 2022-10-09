@@ -1,14 +1,36 @@
 package surrealdb_test
 
 import (
-	"context"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/idevelopthings/surrealdb.go.unofficial"
+	"github.com/idevelopthings/surrealdb.go.unofficial/internal"
 )
 
-func setupTests(ctx context.Context, t *testing.T) *surrealdb.DB {
-	db, err := surrealdb.New(ctx, sdbConfig)
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	return value
+}
+
+var sdbConfig = &internal.DbConfig{
+	Url:       getEnvOrDefault("SURREALDB_RPC_URL", "ws://localhost:8000/rpc"),
+	Username:  getEnvOrDefault("SURREALDB_USER", "root"),
+	Password:  getEnvOrDefault("SURREALDB_PASS", "root"),
+	Database:  "test",
+	Namespace: "test",
+	AutoLogin: true,
+	AutoUse:   true,
+	Timeouts:  &internal.DbTimeoutConfig{Timeout: time.Duration(10) * time.Second},
+}
+
+func setupTests(t *testing.T) *surrealdb.DB {
+	db, err := surrealdb.New(sdbConfig)
 	if err != nil {
 		if t != nil {
 			t.Errorf("Error creating db: %s", err)
@@ -17,13 +39,16 @@ func setupTests(ctx context.Context, t *testing.T) *surrealdb.DB {
 	}
 	// insert testing data
 
-	if _, err := db.Query(ctx, "DELETE user:bob; UPDATE user:bob SET username = $username;", map[string]any{"username": "bob"}); err != nil {
+	if _, err := db.Query("DELETE user:bob; UPDATE user:bob SET username = $username;", map[string]any{"username": "bob"}); err != nil {
 		t.Errorf("Update user:bob errored: %d", err)
 	}
-	if _, err := db.Query(ctx, "DELETE user:bob_two; UPDATE user:bob_two SET username = $username;", map[string]any{"username": "bob"}); err != nil {
+	if _, err := db.Query("DELETE user:bob_two; UPDATE user:bob_two SET username = $username;", map[string]any{"username": "bob"}); err != nil {
 		t.Errorf("Update user:bob_two errored: %d", err)
 	}
-	if _, err := db.Query(ctx, "DELETE user:bob_three; UPDATE user:bob_three SET username = $username;", map[string]any{"username": "bob"}); err != nil {
+	if _, err := db.Query("DELETE user:bob_three; UPDATE user:bob_three SET username = $username;", map[string]any{"username": "bob"}); err != nil {
+		t.Errorf("Update user:bob_three errored: %d", err)
+	}
+	if _, err := db.Query("DELETE user:bob_four; UPDATE user:bob_three SET username = $username;", map[string]any{"username": "bob"}); err != nil {
 		t.Errorf("Update user:bob_three errored: %d", err)
 	}
 
@@ -31,17 +56,14 @@ func setupTests(ctx context.Context, t *testing.T) *surrealdb.DB {
 }
 
 type testUserInformation struct {
-	Username string `json:"username"`
+	Username string `json:"username,omitempty"`
 	NewValue string `json:"newValue,omitempty"`
 	Nickname string `json:"nickname,omitempty"`
 	Age      int    `json:"age,omitempty"`
 }
 
 func Test_QueryResolver_Query(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	_ = setupTests(ctx, t)
+	_ = setupTests(t)
 
 	result := surrealdb.Query[testUserInformation]("SELECT * FROM user:bob WHERE username = $username;", map[string]any{
 		"username": "bob",
@@ -65,15 +87,35 @@ func Test_QueryResolver_Query(t *testing.T) {
 
 }
 
+func Test_QueryResolver_Select(t *testing.T) {
+	_ = setupTests(t)
+
+	result := surrealdb.Select[testUserInformation]("user")
+	if result.HasError() {
+		t.Errorf("Query errored: %d", result.Error())
+		return
+	}
+	allBobs := result.All()
+	if len(allBobs) == 0 {
+		t.Errorf("Expected array of bobs, got empty array")
+		return
+	}
+
+	bob := result.First()
+	if bob == nil {
+		t.Errorf("Expected object for bob, got nil")
+		return
+	}
+	if bob.Username != "bob" {
+		t.Errorf("Expected bob, got %s", bob.Username)
+		return
+	}
+}
+
 func Test_QueryResolver_Create(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	_ = setupTests(t)
 
-	db := setupTests(ctx, nil)
-
-	result := surrealdb.Create[testUserInformation](ctx, db, "user", map[string]any{
-		"username": "bob",
-	})
+	result := surrealdb.Create[testUserInformation]("user", testUserInformation{Username: "bob"})
 	if result.HasError() {
 		t.Errorf("Query errored: %d", result.Error())
 		return
@@ -91,14 +133,26 @@ func Test_QueryResolver_Create(t *testing.T) {
 }
 
 func Test_QueryResolver_Update(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	_ = setupTests(t)
 
-	db := setupTests(ctx, nil)
-
-	result := surrealdb.Update[testUserInformation](ctx, db, "user:bob_two", map[string]any{
-		"newValue": "hello world",
+	cResult := surrealdb.Create[testUserInformation]("user:bob_four", testUserInformation{
+		Username: "bob_four",
+		NewValue: "empty",
 	})
+	if cResult.HasError() {
+		t.Errorf("Query errored: %d", cResult.Error())
+		return
+	}
+	if cResult.Item().Username != "bob_four" {
+		t.Errorf("Expected bob_four, got %s", cResult.Item().Username)
+		return
+	}
+	if cResult.Item().NewValue != "empty" {
+		t.Errorf("Expected empty, got %s", cResult.Item().NewValue)
+		return
+	}
+
+	result := surrealdb.Change[testUserInformation]("user:bob_four", testUserInformation{NewValue: "hello world"})
 	if result.HasError() {
 		t.Errorf("Query errored: %d", result.Error())
 		return
@@ -108,7 +162,7 @@ func Test_QueryResolver_Update(t *testing.T) {
 		t.Errorf("Expected object for bob, got nil")
 		return
 	}
-	if bob.Username != "bob" {
+	if bob.Username != "bob_four" {
 		t.Errorf("Expected bob, got %s", bob.Username)
 		return
 	}
@@ -120,14 +174,9 @@ func Test_QueryResolver_Update(t *testing.T) {
 }
 
 func Test_QueryResolver_Change(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	_ = setupTests(t)
 
-	db := setupTests(ctx, nil)
-
-	result := surrealdb.Change[testUserInformation](ctx, db, "user:bob_two", map[string]any{
-		"newValue": "changed value",
-	})
+	result := surrealdb.Change[testUserInformation]("user:bob_two", testUserInformation{NewValue: "changed value"})
 	if result.HasError() {
 		t.Errorf("Query errored: %d", result.Error())
 		return
@@ -149,17 +198,14 @@ func Test_QueryResolver_Change(t *testing.T) {
 }
 
 func Test_QueryResolver_Modify(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	db := setupTests(ctx, nil)
+	_ = setupTests(t)
 
 	patches := []surrealdb.Patch{
 		{Op: "add", Path: "nickname", Value: "Bobs nickname"},
 		{Op: "add", Path: "age", Value: 44},
 	}
 
-	result := surrealdb.Modify(ctx, db, "user:bob_three", patches)
+	result := surrealdb.Modify("user:bob_three", patches)
 
 	if result.HasError() {
 		t.Errorf("Query errored: %d", result.Error())
@@ -182,12 +228,9 @@ func Test_QueryResolver_Modify(t *testing.T) {
 }
 
 func Test_QueryResolver_Delete(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	_ = setupTests(t)
 
-	db := setupTests(ctx, nil)
-
-	result := surrealdb.Delete[testUserInformation](ctx, db, "user:bob_three")
+	result := surrealdb.Delete[testUserInformation]("user:bob_three")
 
 	if result.HasError() {
 		t.Errorf("Query errored: %d", result.Error())

@@ -1,32 +1,24 @@
 package surrealdb
 
-import (
-	"context"
-	"time"
-)
-
 type QueryResolver[T any] struct {
 	err    error
 	query  string
 	params any
-	ctx    context.Context
 }
 
-func createResolver[T any](ctx context.Context, query string, params any) *QueryResolver[T] {
+func createResolver[T any](query string, params any) *QueryResolver[T] {
 	resolver := &QueryResolver[T]{
 		query:  query,
 		params: params,
-		ctx:    ctx,
 	}
 
 	return resolver
 }
 
 type QueryConfig struct {
-	Ctx    context.Context
 	Db     *DB
 	Query  string
-	Params map[string]any
+	Params any
 }
 
 // Query creates a new query resolver
@@ -38,17 +30,16 @@ func Query[T any](query string, params ...map[string]any) *ResolvedQuery[T] {
 	}
 
 	var config = QueryConfig{
-		Ctx:    dbConfig.Ctx,
-		Db:     db,
+		Db:     Connection,
 		Params: params[0],
 		Query:  query,
 	}
 
-	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
-		defer cancel()
-		config.Ctx = ctx
-	}
+	// if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
+	// 	ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
+	// 	defer cancel()
+	// 	config.Ctx = ctx
+	// }
 
 	return QueryWithConfig[T](config)
 }
@@ -56,129 +47,64 @@ func Query[T any](query string, params ...map[string]any) *ResolvedQuery[T] {
 // QueryWithConfig creates a new query resolver
 // Uses a specific db instance and ctx, does not use auto ctx timeouts
 func QueryWithConfig[T any](config QueryConfig) *ResolvedQuery[T] {
-	return createResolver[T](config.Ctx, config.Query, config.Params).runQuery(config.Db)
+	return createResolver[T](config.Query, config.Params).runQuery(config.Db)
 }
 
 func (resolver *QueryResolver[T]) runQuery(db *DB) *ResolvedQuery[T] {
-	result, err := db.send(resolver.ctx, "query", resolver.query, resolver.params)
+	result, err := db.send("query", resolver.query, resolver.params)
 	if err != nil {
 		panic(err)
 	}
-	if _, ok := result.(*RPCRawResponse); !ok {
-		panic("Invalid response")
-	}
-	return NewResolvedQuery[T](result.(*RPCRawResponse))
+
+	return NewResolvedQuery[T](result)
 }
 
-func Create[T any](what string, params ...map[string]any) ResolvedCreateResult[T] {
-	if len(params) == 0 {
-		// Ensure there's always a default, surreal doesn't like it missing
-		params = append(params, map[string]any{})
-	}
-	var config = QueryConfig{
-		Ctx:    dbConfig.Ctx,
-		Db:     db,
-		Params: params[0],
-		Query:  what,
-	}
-	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
-		defer cancel()
-		config.Ctx = ctx
-	}
-	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "create")
+// Select this will select one or many documents
+// It is the same as: https://surrealdb.com/docs/integration/http#select-all
+func Select[T any](what string) *ResolvedCrudResult[T] {
+	return createResolver[T](what, map[string]any{}).runCrud(Connection, "select")
 }
 
-func Update[T any](what string, params ...map[string]any) ResolvedUpdateResult[T] {
-	if len(params) == 0 {
-		// Ensure there's always a default, surreal doesn't like it missing
-		params = append(params, map[string]any{})
-	}
-	var config = QueryConfig{
-		Ctx:    dbConfig.Ctx,
-		Db:     db,
-		Params: params[0],
-		Query:  what,
-	}
-	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
-		defer cancel()
-		config.Ctx = ctx
-	}
-	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "update")
+// Create This will create a new document
+// It is the same as: https://surrealdb.com/docs/integration/http#create-all
+func Create[T any, DType any | map[string]any](what string, data DType) ResolvedCreateResult[T] {
+	return createResolver[T](what, data).runCrud(Connection, "create")
 }
 
-func Change[T any](what string, params ...map[string]any) ResolvedUpdateResult[T] {
-	if len(params) == 0 {
-		// Ensure there's always a default, surreal doesn't like it missing
-		params = append(params, map[string]any{})
-	}
-	var config = QueryConfig{
-		Ctx:    dbConfig.Ctx,
-		Db:     db,
-		Params: params[0],
-		Query:  what,
-	}
-	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
-		defer cancel()
-		config.Ctx = ctx
-	}
-	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "change")
+// Update This will apply a "replace" change to the document
+// It is the same as: https://surrealdb.com/docs/integration/http#update-one
+func Update[T any, DType any | map[string]any](what string, data DType) ResolvedUpdateResult[T] {
+	return createResolver[T](what, data).runCrud(Connection, "update")
 }
 
+// Change This will apply a "merge" change to the document
+// It is the same as: https://surrealdb.com/docs/integration/http#modify-one
+func Change[T any, DType any | map[string]any](what string, data DType) ResolvedUpdateResult[T] {
+	return createResolver[T](what, data).runCrud(Connection, "change")
+}
+
+// Modify applies a JSONPatch to the document
 func Modify(what string, data []Patch) *ResolvedModifyResult {
-
-	var config = QueryConfig{
-		Ctx:   dbConfig.Ctx,
-		Db:    db,
-		Query: what,
-	}
-	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
-		defer cancel()
-		config.Ctx = ctx
-	}
-	return createResolver[any](config.Ctx, config.Query, data).runModify(config.Db)
+	return createResolver[any](what, data).runModify(Connection)
 }
 
-func Delete[T any](what string, params ...map[string]any) ResolvedUpdateResult[T] {
-	if len(params) == 0 {
-		// Ensure there's always a default, surreal doesn't like it missing
-		params = append(params, map[string]any{})
-	}
-	var config = QueryConfig{
-		Ctx:    dbConfig.Ctx,
-		Db:     db,
-		Params: params[0],
-		Query:  what,
-	}
-	if dbConfig.Timeouts != nil && dbConfig.Timeouts.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(dbConfig.Ctx, dbConfig.Timeouts.Timeout*time.Millisecond)
-		defer cancel()
-		config.Ctx = ctx
-	}
-	return createResolver[T](config.Ctx, config.Query, config.Params).runCrud(config.Db, "delete")
+// Delete deletes a document or all documents
+func Delete[T any](what string) ResolvedUpdateResult[T] {
+	return createResolver[T](what, map[string]any{}).runCrud(Connection, "delete")
 }
 
 func (resolver *QueryResolver[T]) runCrud(db *DB, method string) *ResolvedCrudResult[T] {
-	result, err := db.send(resolver.ctx, method, resolver.query, resolver.params)
+	result, err := db.send(method, resolver.query, resolver.params)
 	if err != nil {
 		panic(err)
 	}
-	if _, ok := result.(*RPCRawResponse); !ok {
-		panic("Invalid response")
-	}
-	return NewResolvedCrudResult[T](result.(*RPCRawResponse))
+	return NewResolvedCrudResult[T](result)
 }
 
 func (resolver *QueryResolver[T]) runModify(db *DB) *ResolvedModifyResult {
-	result, err := db.send(resolver.ctx, "modify", resolver.query, resolver.params)
+	result, err := db.send("modify", resolver.query, resolver.params)
 	if err != nil {
 		panic(err)
 	}
-	if _, ok := result.(*RPCRawResponse); !ok {
-		panic("Invalid response")
-	}
-	return NewResolvedModifyResult(result.(*RPCRawResponse))
+	return NewResolvedModifyResult(result)
 }

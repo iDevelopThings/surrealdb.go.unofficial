@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/surrealdb/surrealdb.go"
+	"github.com/idevelopthings/surrealdb.go.unofficial"
 	"github.com/test-go/testify/suite"
 )
 
