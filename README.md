@@ -1,6 +1,18 @@
-# surrealdb.go
+<h1 align="center">surrealdb.go</h1>
+<p align="center">
+    <a align="center" href="https://goreportcard.com/report/github.com/idevelopthings/surrealdb.go.unofficial" target="_blank">
+        <img src="https://goreportcard.com/badge/github.com/idevelopthings/surrealdb.go.unofficial"/>
+    </a>    
+    <a align="center" target="_blank" href="https://pkg.go.dev/github.com/idevelopthings/surrealdb.go.unofficial">
+        <img src="https://pkg.go.dev/badge/github.com/idevelopthings/surrealdb.go.unofficial.svg" alt="Go Reference">
+    </a>
+</p>
 
-Unofficial fork of the [surrealdb](https://github.com/surrealdb/surrealdb.go) package
+<p align="center">
+    Unofficial fork of the <a href="https://github.com/surrealdb/surrealdb.go" target="_blank">surrealdb</a> package
+</p>
+
+<hr>
 
 # Credit:
 
@@ -18,6 +30,7 @@ hopefully no one sees me as ripping there work and understands)
 - Has a global DB instance
 
 # Installation:
+
 ```shell
 go get github.com/idevelopthings/surrealdb.go.unofficial
 ```
@@ -28,63 +41,66 @@ go get github.com/idevelopthings/surrealdb.go.unofficial
 
 ```go
 import (
-	"github.com/idevelopthings/surrealdb.go.unofficial"
-    "github.com/idevelopthings/surrealdb.go.unofficial/config"
+"github.com/idevelopthings/surrealdb.go.unofficial"
+"github.com/idevelopthings/surrealdb.go.unofficial/config"
 )
-db, err := surrealdb.New(ctx, &&Config.DbConfig{
-   Url:       "ws://localhost:8000/rpc",
-   Username:  "root",
-   Password:  "root",
-   Database:  "test",
-   Namespace: "test",
-   // This will call db.signin() with the supplied credentials
-   AutoLogin: true,
-   // This will call db.use() with the supplied credentials
-   AutoUse:   true,
-   // When using surrealdb.Query[MyModel](), timeouts will be configured
-   Timeouts:  &Config.DbTimeoutConfig{Timeout: time.Duration(10) * time.Second},
+db, err := surrealdb.New(ctx, && Config.DbConfig{
+Url:       "ws://localhost:8000/rpc",
+Username:  "root",
+Password:  "root",
+Database:  "test",
+Namespace: "test",
+// This will call db.signin() with the supplied credentials
+AutoLogin: true,
+// This will call db.use() with the supplied credentials
+AutoUse:   true,
+// When using surrealdb.Query[MyModel](), timeouts will be configured
+Timeouts:  &Config.DbTimeoutConfig{Timeout: time.Duration(10) * time.Second},
 })
 ```
 
 # Query Resolver/Generics
 
 ## Quick Overview:
+
 A lot of the query resolver use a similar interface/resolver setup
 
 These methods exist on pretty much all resolver responses:
+
 ```go
-result.HasError()  // Check if there was an error
+result.HasError() // Check if there was an error
 result.Error()     // Get the go error if there is one
 result.First()     // If you expect only 1 user object for example, it will take the first out of the response and return it(so you don't have to play with arrays, it will be a "User" instance for example)
-result.All()       // Get all the results(an array of Users)
-result.Results()   // Get the raw surreal response/results
-result.IsEmpty()   // Check if there is any items in the result
+result.All()     // Get all the results(an array of Users)
+result.Results() // Get the raw surreal response/results
+result.IsEmpty() // Check if there is any items in the result
 ```
 
 **In some cases, for example, create, since only one record is ever expected(as we can only create one)**
 
 It will use a ``.Item()`` method instead of ``.First()``, and will not contain ``.All()``
 
-
 ## Query
+
 Run a query with parameters(parameters should be used to prevent injection)
+
 ```go
 result := surrealdb.Query[User]("select * from users where name = $name", map[string]any{
-   "name": "bob",
+"name": "bob",
 })
 
-result.HasError()           // Check if there was an error
-result.Error()              // Get the go error if there is one
-result.AllAreSuccessful()   // Check if all queries were successful
-result.TotalTimeTaken()     // Calculate the total time of all queries
-result.FirstQueryResult()   // Get the first query result(surreal returns multiple results for a query, so if you run more than 1, this is useful)
-result.First()              // If you expect only 1 user object for example, it will take the first out of the response and return it(so you don't have to play with arrays, it will be a "User" instance for example)
-result.All()                // Get all the results(an array of Users)
-result.Results()            // Get the raw surreal response/results
+result.HasError() // Check if there was an error
+result.Error()            // Get the go error if there is one
+result.AllAreSuccessful() // Check if all queries were successful
+result.TotalTimeTaken() // Calculate the total time of all queries
+result.FirstQueryResult() // Get the first query result(surreal returns multiple results for a query, so if you run more than 1, this is useful)
+result.First()            // If you expect only 1 user object for example, it will take the first out of the response and return it(so you don't have to play with arrays, it will be a "User" instance for example)
+result.All()     // Get all the results(an array of Users)
+result.Results() // Get the raw surreal response/results
 ```
 
-
 ## Select
+
 Select one or many records
 
 If an id is supplied for the first arg, it will select the one record with that id
@@ -100,6 +116,7 @@ result := surrealdb.Select[User]("user")
 ```
 
 ## Create
+
 Create one record
 
 ```go
@@ -111,6 +128,7 @@ surrealdb.Create[User]("user", User{Username: "Bob"})
 ```
 
 ## Update
+
 Update one or many records
 
 If an id is supplied for the first arg, it will update the one record with that id
@@ -127,6 +145,7 @@ surrealdb.Update[User]("user:12345", User{Username: "Bob"})
 ```
 
 ## Change
+
 Update one or many records, but will use a MERGE operation, so it will only update the fields you specify
 
 If an id is supplied for the first arg, it will update the one record with that id
@@ -141,6 +160,7 @@ surrealdb.Change[User]("user:12345", User{Username: "Bob"})
 ```
 
 ## Delete
+
 Delete one record, or all records in a table
 
 If an id is supplied for the first arg, it will delete the one record with that id
@@ -153,8 +173,6 @@ surrealdb.Delete[User]("user:12345")
 surrealdb.Delete[User]("user:12345")
 // Refer to the above overview for the methods available on the result
 ```
-
-
 
 # WIP Query Builder
 
@@ -169,20 +187,20 @@ queryResult := query.First() // = *User{Username: "bob"}
 
 `query` contains some "proxy" methods that the QueryResolvers above also have
 
-So if you keep a reference to it, it can be used to check if there was an error and such. 
+So if you keep a reference to it, it can be used to check if there was an error and such.
 
 For example, with the above
 
 ```go
 query := surrealdb.NewBuilder[User]("user").
-    Where("username", "bob")
+Where("username", "bob")
 user := query.First()
 
 if query.HasError() {
-    log.Fatal(query.Error())
+log.Fatal(query.Error())
 }
 if query.IsEmpty() {
-    log.Fatal("No user found")
+log.Fatal("No user found")
 }
 // Do something with user
 ```
