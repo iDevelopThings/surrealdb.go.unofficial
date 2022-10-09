@@ -14,7 +14,7 @@ var (
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
 type DB struct {
-	ws *internal.WebSocket
+	ws *internal.WS
 }
 
 var dbConfig *Config.DbConfig
@@ -175,10 +175,24 @@ func (db *DB) Query(sql string, vars any) (any, error) {
 func (db *DB) send(method string, params ...any) (*internal.RPCRawResponse, error) {
 	id := xid()
 
-	response, err := db.ws.Send(id, method, params)
-	if err != nil {
-		return nil, err
-	}
+	// response, err := db.ws.Send(id, method, params)
 
-	return response, nil
+	chn := db.ws.Once(id, method)
+	// here we send the args through our websocket connection
+	db.ws.Send(id, method, params)
+
+	ctx, cancel := db.ws.NewContext()
+	defer cancel()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+
+	case r := <-chn:
+		if r.Err != nil {
+			return nil, r.Err
+		}
+
+		return r.Value, nil
+	}
 }

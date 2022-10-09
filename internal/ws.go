@@ -1,152 +1,295 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
+	"io"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	Config "github.com/idevelopthings/surrealdb.go.unofficial/config"
 )
 
-const (
-	// CloseMessageCode identifier the message id for a close request
-	CloseMessageCode = 1000
-	// DefaultTimeout timeout in seconds
-	DefaultTimeout = 30
-)
+type WS struct {
+	ws   *websocket.Conn        // websocket connection
+	send chan<- *RPCRequest     // sender channel
+	recv <-chan *RPCRawResponse // receive channel
 
-type Option func(ws *WebSocket) error
-
-type WebSocket struct {
-	conn    *websocket.Conn
 	timeout time.Duration
 
-	respChan chan *RPCRawResponse
-	close    chan int
+	emit struct {
+		// TODO: use the lock less, through smaller locks (separate once/when locks ?)
+		// or ideally by removing locks altogether
+		lock sync.Mutex // pause threads to avoid conflicts
+
+		// do the callbacks really need to be a list ?
+		once map[any][]func(error, any) // once listeners
+		when map[any][]func(error, any) // when listeners
+	}
+	ctx context.Context
 }
 
-// NewWebsocket creates a new websocket connection
-// If timeout is not specified, it will use the default of 30s
-func NewWebsocket(url string, timeout ...*Config.DbTimeoutConfig) (*WebSocket, error) {
-	ws, err := NewWebsocketWithOptions(url, Timeout(DefaultTimeout))
-	if err != nil {
-		return nil, err
-	}
-	if len(timeout) == 0 || timeout[0] == nil {
-		return ws, nil
-	}
-
-	ws.timeout = timeout[0].Timeout
-
-	return ws, nil
-}
-
-func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) {
+func NewWebsocket(url string, timeout ...*Config.DbTimeoutConfig) (*WS, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
 
-	conn, _, err := dialer.Dial(url, nil)
+	// establish connection
+	so, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ws := &WebSocket{
-		conn:     conn,
-		respChan: make(chan *RPCRawResponse),
-		close:    make(chan int),
+	ws := &WS{ws: so}
+
+	// initilialize the callback maps here so we don't need to check them at runtime
+	ws.emit.once = make(map[any][]func(error, any))
+	ws.emit.when = make(map[any][]func(error, any))
+
+	ws.ctx = context.Background()
+
+	if len(timeout) != 0 && timeout[0] != nil {
+		ws.timeout = timeout[0].Timeout
 	}
 
-	for _, option := range options {
-		if err := option(ws); err != nil {
-			return nil, err
-		}
-	}
+	// setup loops and channels
+	ws.initialise()
 
-	ws.initialize()
 	return ws, nil
+
 }
 
-func Timeout(timeout float64) Option {
-	return func(ws *WebSocket) error {
-		ws.timeout = time.Duration(timeout) * time.Second
-		return nil
-	}
+// --------------------------------------------------
+// Public methods
+// --------------------------------------------------
+
+func (ws *WS) Close() error {
+
+	msg := websocket.FormatCloseMessage(1000, "")
+	return ws.ws.WriteMessage(websocket.CloseMessage, msg)
+
 }
 
-func (ws *WebSocket) Close() error {
-	defer func() {
-		close(ws.close)
+func (ws *WS) Send(id string, method string, params []any) {
+	go func() {
+		ws.send <- &RPCRequest{
+			ID:     id,
+			Method: method,
+			Params: params,
+		}
 	}()
-
-	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
-func (ws *WebSocket) Send(id, method string, params []interface{}) (*RPCRawResponse, error) {
-	request := &RPCRequest{
-		ID:     id,
-		Method: method,
-		Params: params,
-	}
+type responseValue struct {
+	Value  *RPCRawResponse
+	Method string
+	Err    error
+}
 
-	if err := ws.write(request); err != nil {
-		return nil, err
-	}
+// Once Subscribe to once()
+func (ws *WS) Once(id, method string) <-chan responseValue {
 
-	tick := time.NewTicker(ws.timeout)
+	out := make(chan responseValue)
 
-	for {
-		select {
-		case <-tick.C:
-			return nil, errors.New("timeout")
-		case res := <-ws.respChan:
-			if res.id != id {
-				continue
+	ws.once(id, func(e error, r any) {
+		out <- responseValue{
+			Value:  r.(*RPCRawResponse),
+			Method: method,
+			Err:    e,
+		}
+		close(out)
+	})
+
+	return out
+
+}
+
+// When Subscribe to when()
+func (ws *WS) When(id, method string) <-chan responseValue {
+	// TODO: make this cancellable (use of context.Context ?)
+
+	out := make(chan responseValue)
+
+	ws.when(id, func(e error, r any) {
+		out <- responseValue{
+			Method: method,
+			Value:  r.(*RPCRawResponse),
+			Err:    e,
+		}
+	})
+
+	return out
+
+}
+
+// --------------------------------------------------
+// Private methods
+// --------------------------------------------------
+
+func (ws *WS) once(id any, fn func(error, any)) {
+
+	// pauses traffic in others threads, so we can add the new listener without conflicts
+
+	ws.emit.lock.Lock()
+	defer ws.emit.lock.Unlock()
+
+	ws.emit.once[id] = append(ws.emit.once[id], fn)
+
+}
+
+// WHEN SYSTEM ISN'T BEEING USED, MAYBE FOR FUTURE IN-DATABASE EVENTS AND/OR REAL TIME stuffs.
+
+func (ws *WS) when(id any, fn func(error, any)) {
+
+	// pauses traffic in others threads, so we can add the new listener without conflicts
+	ws.emit.lock.Lock()
+	defer ws.emit.lock.Unlock()
+
+	ws.emit.when[id] = append(ws.emit.when[id], fn)
+
+}
+
+func (ws *WS) done(id any, err error, res any) {
+
+	// pauses traffic in others threads, so we can modify listeners without conflicts
+	ws.emit.lock.Lock()
+	defer ws.emit.lock.Unlock()
+
+	// if our events map exist
+	if ws.emit.when != nil {
+
+		// if there's some listener aiming to this id response
+		if when, ok := ws.emit.when[id]; ok {
+
+			// dispatch the event, starting from the end, so we prioritize the new ones
+			for i := len(when) - 1; i >= 0; i-- {
+
+				// invoke callback
+				when[i](err, res)
+
 			}
-			if res.HasInternalError() {
-				return nil, res.Error()
-			}
-
-			return res, nil
 		}
 	}
+
+	// if our events map exist
+	if ws.emit.once != nil {
+
+		// if theres some listener aiming to this id response
+		if once, ok := ws.emit.once[id]; ok {
+
+			// dispatch the event, starting from the end, so we prioritize the new ones
+			for i := len(once) - 1; i >= 0; i-- {
+
+				// invoke callback
+				once[i](err, res)
+
+				// erase this listener
+				once[i] = nil
+
+			}
+
+			// remove all listeners
+			ws.emit.once[id] = once[0:]
+		}
+	}
+
 }
 
-func (ws *WebSocket) read() (*RPCRawResponse, error) {
-	_, data, err := ws.conn.ReadMessage()
+func (ws *WS) read() (response *RPCRawResponse, err error) {
+	_, r, err := ws.ws.NextReader()
 	if err != nil {
 		return nil, err
 	}
 
-	return CreateRPCRawResponse(data), nil
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateRPCRawResponse(raw), nil
 }
 
-func (ws *WebSocket) write(v interface{}) error {
-	data, err := json.Marshal(v)
+func (ws *WS) write(v any) (err error) {
+	w, err := ws.ws.NextWriter(websocket.TextMessage)
 	if err != nil {
 		return err
 	}
 
-	return ws.conn.WriteMessage(websocket.TextMessage, data)
+	enc := json.NewEncoder(w)
+	// the default HTML escaping messes with select arrows
+	enc.SetEscapeHTML(false)
+	err = enc.Encode(v)
+	if err != nil {
+		return err
+	}
+
+	return w.Close()
 }
 
-func (ws *WebSocket) initialize() {
+func (ws *WS) initialise() {
+	send := make(chan *RPCRequest)
+	recv := make(chan *RPCRawResponse)
+	ctx, cancel := context.WithCancel(ws.ctx)
+
+	// RECEIVER LOOP
 	go func() {
 		for {
 			select {
-			case <-ws.close:
+			case <-ctx.Done():
 				return
 			default:
 				res, err := ws.read()
 
 				if err != nil {
-					log.Println("error reading from websocket:", err)
-					continue
+					ws.Close()
+					cancel()
+					return
 				}
 
-				ws.respChan <- res
+				recv <- res // redirect response to: MAIN LOOP
 			}
 		}
 	}()
+
+	// SENDER LOOP
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return // stops: THIS LOOP
+			case res := <-send:
+				err := ws.write(res) // marshal and send
+
+				if err != nil {
+					ws.Close()
+					cancel()
+					return // stops: THIS LOOP
+				}
+			}
+		}
+	}()
+
+	// MAIN LOOP
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case res := <-ws.recv:
+				if res.HasInternalError() {
+					log.Println("There was an error whilst decoding the RPC response: ", res.internalProcessingError)
+				}
+
+				ws.done(res.Id(), res.Error(), res)
+			}
+		}
+	}()
+
+	ws.send = send
+	ws.recv = recv
+}
+
+func (ws *WS) NewContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ws.ctx, ws.timeout)
 }
