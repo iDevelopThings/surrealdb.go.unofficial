@@ -235,6 +235,11 @@ func (resolver *ResolvedCrudResult[T]) Error() error {
 
 // Some utility/helper methods available to the user
 
+// IsEmpty Check if the response is empty
+func (resolver *ResolvedCrudResult[T]) IsEmpty() bool {
+	return resolver.HasError() || len(resolver.results) == 0
+}
+
 // First Get the first item from the query
 // Used when you expect only 1 item to be returned
 func (resolver *ResolvedCrudResult[T]) First() *T {
