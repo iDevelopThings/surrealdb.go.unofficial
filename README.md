@@ -27,7 +27,11 @@ go get github.com/idevelopthings/surrealdb.go.unofficial
 ## Setup:
 
 ```go
-db, err := surrealdb.New(ctx, &surrealdb.DbConfig{
+import (
+	"github.com/idevelopthings/surrealdb.go.unofficial"
+    "github.com/idevelopthings/surrealdb.go.unofficial/config"
+)
+db, err := surrealdb.New(ctx, &&Config.DbConfig{
    Url:       "ws://localhost:8000/rpc",
    Username:  "root",
    Password:  "root",
@@ -38,7 +42,7 @@ db, err := surrealdb.New(ctx, &surrealdb.DbConfig{
    // This will call db.use() with the supplied credentials
    AutoUse:   true,
    // When using surrealdb.Query[MyModel](), timeouts will be configured
-   Timeouts:  &surrealdb.DbTimeoutConfig{Timeout: time.Duration(10) * time.Second},
+   Timeouts:  &Config.DbTimeoutConfig{Timeout: time.Duration(10) * time.Second},
 })
 ```
 
